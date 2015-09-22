@@ -11,6 +11,7 @@
 #include <sys/neutrino.h>
 #include <time.h>
 #include <sys/netmgr.h>
+#include <errno.h>
 
 
 #define STATE_IDLE 0
@@ -25,7 +26,8 @@ typedef struct{
 		int period;
 		int deadline; // Date time that it needs to be done by.
 		pthread_t threadID;
-		pthread_mutex_t mutex;
+		//pthread_mutex_t mutex;
+		pthread_attr_t threadAttr;
 		int state;
 		//The next three are necessary for doing the Least Slack Time algorithm.
 		int runTimeLeft;
@@ -48,22 +50,20 @@ void * program(void * arg){
 	//ProgramInfo * program = (ProgramInfo *)arg;
 	int time = programsArray[location].runTime;
 
-	while(1){
 		//pthread_mutex_lock(&(programsArray[location].mutex));
-		if(programsArray[location].state == STATE_READY){
+		//if(programsArray[location].state == STATE_READY){
 			programsArray[location].state = STATE_RUNNING;
 			nanospin_ns(time * 1000000);
 
 			programsArray[location].state = STATE_IDLE;
-		}
-	}
+	//}
 }
 
 void * rateMonotonicScheduler(void * arg){
 
 	//int progNumbers = (int)&arg[0];
 	//ProgramInfo * programsArray = (ProgramInfo *)arg;
-	pthread_attr_t progThreadAttributes;
+	//pthread_attr_t progThreadAttributes;
 	struct sched_param progParameters;
 	struct _clockperiod clkper;
 	struct sigevent event;
@@ -71,8 +71,10 @@ void * rateMonotonicScheduler(void * arg){
 	timer_t timer_id;
 	int policy;
 	int loopCounter;
+	char str[10];
+	//int repeat;
 
-	pthread_attr_init(&progThreadAttributes);
+	//pthread_attr_init(&progThreadAttributes);
 	pthread_getschedparam(pthread_self(),&policy, &progParameters);
 
 	ProgramInfo buffer;
@@ -90,9 +92,15 @@ void * rateMonotonicScheduler(void * arg){
 	for(loopCounter = 0; loopCounter < numPrograms; loopCounter++){
 		progParameters.sched_priority--;
 
-		pthread_attr_setschedparam(&progThreadAttributes, &progParameters);
-		pthread_create(&(programsArray[loopCounter].threadID), &progThreadAttributes, &program, (void *)loopCounter);
+		pthread_attr_setschedparam(&(programsArray[loopCounter].threadAttr), &progParameters);
+		if(pthread_create(&(programsArray[loopCounter].threadID), &(programsArray[loopCounter].threadAttr), &program, (void *)loopCounter)!=EOK){
+			printf("IT BROKE WHEN FIRST STARTED YO!\n");
+			exit(0);
+		}
+		sprintf(str,"Task %i",loopCounter);
+		pthread_setname_np(programsArray[loopCounter].threadID,str);
 	}
+
 
 	/*Real Time Clock Setup*/
 	clkper.nsec = 1000000;
@@ -135,6 +143,12 @@ void * rateMonotonicScheduler(void * arg){
 					programsArray[loopCounter].deadline = programsArray[loopCounter].period;
 					programsArray[loopCounter].state = STATE_READY;
 					//pthread_mutex_unlock(&(programsArray[loopCounter].mutex));
+					if(pthread_create(&programsArray[loopCounter].threadID,&(programsArray[loopCounter].threadAttr),&program,(void *)loopCounter)!=EOK){
+						printf("It broke in the overhead part\n");
+						exit(0);
+					}
+					sprintf(str,"Task %i",loopCounter);
+					pthread_setname_np(programsArray[loopCounter].threadID,str);
 				}
 			}
 		}
@@ -426,8 +440,7 @@ void ReadData(){
 		programsArray[i].slackTime = programsArray[i].deadline - programsArray[i].runTime;
 		programsArray[i].timeSinceReady = 0;
 
-		pthread_mutex_init(&(programsArray[i].mutex), NULL);
-		pthread_mutex_unlock(&(programsArray[i].mutex));
+		pthread_attr_init(&(programsArray[i].threadAttr));
 	}
 
 }
@@ -444,16 +457,19 @@ int main(int argc, char *argv[]) {
 	pthread_attr_setdetachstate(&threadAttributes, PTHREAD_CREATE_JOINABLE);
 	pthread_attr_setschedparam(&threadAttributes, &parameters);
 
-	pthread_mutex_init(&mutex, NULL);
+	//pthread_mutex_init(&mutex, NULL);
 	nanospin_calibrate(0);
 
 	ReadData();
 
-	pthread_cond_init(&control, NULL);
+	//pthread_cond_init(&control, NULL);
 
-	pthread_create(&scheduleThreadID, &threadAttributes, &rateMonotonicScheduler, (void *)1);
+	if(pthread_create(&scheduleThreadID, &threadAttributes, &rateMonotonicScheduler, (void *)1)!=EOK){
+		printf("Scheduler not created!\n");
+		exit(0);
+	}
 	pthread_join(scheduleThreadID, NULL);
-
+	printf("Reached End of Main, Ending program\n");
 	return EXIT_SUCCESS;
 }
 

@@ -12,6 +12,7 @@
 #include <time.h>
 #include <sys/netmgr.h>
 #include <errno.h>
+#include "instrex.h"
 
 
 #define STATE_IDLE 0
@@ -19,8 +20,8 @@
 #define STATE_RUNNING 2
 
 static pthread_t scheduleThreadID;
-pthread_mutex_t mutex;
-
+int schedulerType;
+int failures;
 typedef struct{
 		int runTime;
 		int period;
@@ -52,6 +53,7 @@ void * program(void * arg){
 
 		//pthread_mutex_lock(&(programsArray[location].mutex));
 		//if(programsArray[location].state == STATE_READY){
+	TraceEvent(_NTO_TRACE_INSERTUSRSTREVENT, location,"Program Started\n" );
 			programsArray[location].state = STATE_RUNNING;
 			nanospin_ns(time * 1000000);
 
@@ -72,7 +74,7 @@ void * rateMonotonicScheduler(void * arg){
 	int policy;
 	int loopCounter;
 	char str[10];
-	//int repeat;
+	int repeat;
 
 	//pthread_attr_init(&progThreadAttributes);
 	pthread_getschedparam(pthread_self(),&policy, &progParameters);
@@ -127,19 +129,21 @@ void * rateMonotonicScheduler(void * arg){
 
 	timer_settime( timer_id, 0, &timer, NULL );
 
-	for(;;){
+	for(repeat = 0;repeat < 10000;repeat++){
 		pid= MsgReceivePulse(chid, &pulse, sizeof(pulse),NULL);
 		for(loopCounter = 0; loopCounter < numPrograms; loopCounter++){
 			programsArray[loopCounter].deadline--;
 
 			if(programsArray[loopCounter].deadline == 0){
 				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
-					perror("Program Failure Detected\n");
-					printf("Program %i Failed to meet Deadline\n",loopCounter);
-					exit(0);
+					//perror("Program Failure Detected\n");
+					//printf("Program %i Failed to meet Deadline\n",loopCounter);
+					//exit(0);
+					failures++;
+					pthread_cancel(programsArray[loopCounter].threadID);
 				}
 
-				if(programsArray[loopCounter].state == STATE_IDLE){
+				//if(programsArray[loopCounter].state == STATE_IDLE){
 					programsArray[loopCounter].deadline = programsArray[loopCounter].period;
 					programsArray[loopCounter].state = STATE_READY;
 					//pthread_mutex_unlock(&(programsArray[loopCounter].mutex));
@@ -149,12 +153,12 @@ void * rateMonotonicScheduler(void * arg){
 					}
 					sprintf(str,"Task %i",loopCounter);
 					pthread_setname_np(programsArray[loopCounter].threadID,str);
-				}
+				//}
 			}
 		}
 	}
 
-	printf("If you reached here, the scheduler stopped running\n");
+	//printf("If you reached here, the scheduler stopped running\n");
 }
 
 void * earliestDeadlineScheduler(void * arg){
@@ -173,6 +177,7 @@ void * earliestDeadlineScheduler(void * arg){
 	int nextShortest = 500;
 	int found = 1;
 	int threadNum=0;
+	int repeat;
 
 	int loopCounter;
  	ProgramInfo buffer;
@@ -220,21 +225,27 @@ void * earliestDeadlineScheduler(void * arg){
 
 	timer_settime( timer_id, 0, &timer, NULL );
 
-	for(;;){
+	for(repeat = 0;repeat < 10000;repeat++){
 		pid= MsgReceivePulse(chid, &pulse, sizeof(pulse),NULL);
 		for(loopCounter = 0; loopCounter < numPrograms; loopCounter++){
 			programsArray[loopCounter].deadline--;
 
 			if(programsArray[loopCounter].deadline == 0){
 				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
-					perror("Program Failure Detected\n");
-					printf("Program %i Failed to meet Deadline\n",loopCounter);
-					exit(0);
+					//perror("Program Failure Detected\n");
+					//printf("Program %i Failed to meet Deadline\n",loopCounter);
+					//exit(0);
+					failures++;
+					pthread_cancel(programsArray[loopCounter].threadID);
 				}
 
-				if(programsArray[loopCounter].state == STATE_IDLE){
+				//if(programsArray[loopCounter].state == STATE_IDLE){
 					programsArray[loopCounter].deadline = programsArray[loopCounter].period;
 					programsArray[loopCounter].state = STATE_READY;
+					if(pthread_create(&programsArray[loopCounter].threadID,&(programsArray[loopCounter].threadAttr),&program,(void *)loopCounter)!=EOK){
+											printf("It broke in the overhead part\n");
+											exit(0);
+					//}
 					//pthread_mutex_unlock(&(programsArray[loopCounter].mutex));
 				}
 			}
@@ -296,6 +307,7 @@ void * leastSlackTime(void * arg){
 	int nextShortest = 500;
 	int found = 1;
 	int threadNum=0;
+	int repeat;
 
 	int loopCounter;
 	ProgramInfo buffer;
@@ -342,7 +354,7 @@ void * leastSlackTime(void * arg){
 
 	timer_settime( timer_id, 0, &timer, NULL );
 
-	for(;;){
+	for(repeat = 0;repeat < 10000;repeat++){
 		pid= MsgReceivePulse(chid, &pulse, sizeof(pulse),NULL);
 		for(loopCounter = 0; loopCounter < numPrograms; loopCounter++){
 			programsArray[loopCounter].deadline--;
@@ -353,21 +365,26 @@ void * leastSlackTime(void * arg){
 			}
 
 			if(programsArray[loopCounter].deadline == 0){
-				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY || programsArray[loopCounter].runTimeLeft < 0){
-					perror("Program Failure Detected\n");
-					printf("Program %i Failed to meet Deadline\n",loopCounter);
-					exit(0);
+				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
+					//perror("Program Failure Detected\n");
+					//printf("Program %i Failed to meet Deadline\n",loopCounter);
+					//exit(0);
+					failures++;
+					pthread_cancel(programsArray[loopCounter].threadID);
 				}
 
-				if(programsArray[loopCounter].state == STATE_IDLE){
+				//if(programsArray[loopCounter].state == STATE_IDLE){
 					programsArray[loopCounter].deadline = programsArray[loopCounter].period;
 					programsArray[loopCounter].runTimeLeft = programsArray[loopCounter].runTime;
 					programsArray[loopCounter].timeSinceReady = 0;
-					programsArray[loopCounter].slackTime = programsArray[loopCounter].deadline - programsArray[loopCounter].period;
 					programsArray[loopCounter].state = STATE_READY;
+					if(pthread_create(&programsArray[loopCounter].threadID,&(programsArray[loopCounter].threadAttr),&program,(void *)loopCounter)!=EOK){
+											printf("It broke in the overhead part\n");
+											exit(0);}
 					//pthread_mutex_unlock(&(programsArray[loopCounter].mutex));
-				}
+				//}
 			}
+			programsArray[loopCounter].slackTime = programsArray[loopCounter].deadline - programsArray[loopCounter].runTimeLeft;
 		}
 
 		//shortest
@@ -412,6 +429,9 @@ void * leastSlackTime(void * arg){
 
 void ReadData(){
 	char buffer[11];
+	printf("Scheduler Type? (0 for Rate-Monotonic, 1 for Earliest Deadline, 2 for Least Slack Time)\n");
+	fgets(buffer,sizeof(buffer),stdin);
+	schedulerType=atoi(buffer);
 	printf("Number of Programs?\n");
 	fgets(buffer,sizeof(buffer),stdin);
 	numPrograms = atoi(buffer);
@@ -453,23 +473,47 @@ int main(int argc, char *argv[]) {
 	pthread_attr_init(&threadAttributes);
 	pthread_getschedparam(pthread_self(),&policy, &parameters);
 
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_DELALLCLASSES));
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_KERCALL));
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_KERCALL));
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_THREAD));
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_THREAD));
+
+	/*
+	     * Set fast emitting mode for all classes and
+	     * their events.
+	     */
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_SETALLCLASSESFAST));
+
+	    /*
+	     * Intercept all event classes
+	   	 */
+	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_ADDALLCLASSES));
+
 	parameters.sched_priority--;
 	pthread_attr_setdetachstate(&threadAttributes, PTHREAD_CREATE_JOINABLE);
 	pthread_attr_setschedparam(&threadAttributes, &parameters);
 
-	//pthread_mutex_init(&mutex, NULL);
+	failures = 0;
+
 	nanospin_calibrate(0);
 
 	ReadData();
 
-	//pthread_cond_init(&control, NULL);
-
-	if(pthread_create(&scheduleThreadID, &threadAttributes, &rateMonotonicScheduler, (void *)1)!=EOK){
-		printf("Scheduler not created!\n");
-		exit(0);
+	if(schedulerType == 1){
+		pthread_create(&scheduleThreadID, &threadAttributes, &earliestDeadlineScheduler, (void *)1);
+	}else if(schedulerType == 2){
+		pthread_create(&scheduleThreadID, &threadAttributes, &leastSlackTime, (void *)1);
+	}else
+	{
+		if(pthread_create(&scheduleThreadID, &threadAttributes, &rateMonotonicScheduler, (void *)1)!=EOK){
+			printf("Scheduler not created!\n");
+			exit(0);
+		}
 	}
 	pthread_join(scheduleThreadID, NULL);
-	printf("Reached End of Main, Ending program\n");
+	printf("Number of Failed Deadlines %i\n",failures);
+	printf("Ending program\n");
 	return EXIT_SUCCESS;
 }
 

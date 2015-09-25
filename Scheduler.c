@@ -34,6 +34,7 @@ typedef struct{
 		int runTimeLeft;
 		int slackTime;
 		int timeSinceReady;
+		int runAmount;
 } ProgramInfo;
 
 ProgramInfo * programsArray;
@@ -58,6 +59,7 @@ void * program(void * arg){
 			nanospin_ns(time * 1000000);
 
 			programsArray[location].state = STATE_IDLE;
+			programsArray[location].runAmount++;
 	//}
 }
 
@@ -251,11 +253,7 @@ void * earliestDeadlineScheduler(void * arg){
 			}
 		}
 
-		//shortest
-		//next shortest
-		//first pass record shortest, give it highest priority
-		//next pass find next shortest, give it 1 lower priority, then make it shortest
-		//repeat until next shotest not found
+
 
 
 		pthread_getschedparam(pthread_self(),&policy, &progParameters);
@@ -387,11 +385,6 @@ void * leastSlackTime(void * arg){
 			programsArray[loopCounter].slackTime = programsArray[loopCounter].deadline - programsArray[loopCounter].runTimeLeft;
 		}
 
-		//shortest
-		//next shortest
-		//first pass record shortest, give it highest priority
-		//next pass find next shortest, give it 1 lower priority, then make it shortest
-		//repeat until next shortest not found
 
 
 		pthread_getschedparam(pthread_self(),&policy, &progParameters);
@@ -459,6 +452,7 @@ void ReadData(){
 		programsArray[i].runTimeLeft = programsArray[i].runTime;
 		programsArray[i].slackTime = programsArray[i].deadline - programsArray[i].runTime;
 		programsArray[i].timeSinceReady = 0;
+		programsArray[i].runAmount=0;
 
 		pthread_attr_init(&(programsArray[i].threadAttr));
 	}
@@ -467,11 +461,14 @@ void ReadData(){
 
 int main(int argc, char *argv[]) {
 
+	int loop;
 	pthread_attr_t threadAttributes;
 	struct sched_param parameters;
 	int policy;
 	pthread_attr_init(&threadAttributes);
 	pthread_getschedparam(pthread_self(),&policy, &parameters);
+
+	ThreadCtl(_NTO_TCTL_IO, NULL);
 
 	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_DELALLCLASSES));
 	TRACE_EVENT(argv[0], TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_KERCALL));
@@ -513,6 +510,9 @@ int main(int argc, char *argv[]) {
 	}
 	pthread_join(scheduleThreadID, NULL);
 	printf("Number of Failed Deadlines %i\n",failures);
+	for(loop = 0; loop < numPrograms;loop++){
+		printf("Program %i Ran %i Times\n",loop,programsArray[loop].runAmount);
+	}
 	printf("Ending program\n");
 	return EXIT_SUCCESS;
 }

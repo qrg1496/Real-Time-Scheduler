@@ -1,6 +1,6 @@
 /*Scheduling Project for Performance Engineering of Real-Time and Embedded Systems
  *
- * Authors: Quentin Goyert,
+ * Authors: Quentin Goyert,Justin Cotner
  */
 
 #include <stdlib.h>
@@ -137,7 +137,7 @@ void * rateMonotonicScheduler(void * arg){
 			programsArray[loopCounter].deadline--;
 
 			if(programsArray[loopCounter].deadline == 0){
-				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
+				if(programsArray[loopCounter].state != STATE_IDLE){
 					//perror("Program Failure Detected\n");
 					//printf("Program %i Failed to meet Deadline\n",loopCounter);
 					//exit(0);
@@ -233,7 +233,7 @@ void * earliestDeadlineScheduler(void * arg){
 			programsArray[loopCounter].deadline--;
 
 			if(programsArray[loopCounter].deadline == 0){
-				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
+				if(programsArray[loopCounter].state != STATE_IDLE){
 					//perror("Program Failure Detected\n");
 					//printf("Program %i Failed to meet Deadline\n",loopCounter);
 					//exit(0);
@@ -363,7 +363,7 @@ void * leastSlackTime(void * arg){
 			}
 
 			if(programsArray[loopCounter].deadline == 0){
-				if(programsArray[loopCounter].state == STATE_RUNNING || programsArray[loopCounter].state == STATE_READY){
+				if(programsArray[loopCounter].state != STATE_IDLE){
 					//perror("Program Failure Detected\n");
 					//printf("Program %i Failed to meet Deadline\n",loopCounter);
 					//exit(0);
